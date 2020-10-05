@@ -15,12 +15,19 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include "ipify.h"
+#ifdef _WIN32
+#include <WinSock2.h>
+#include <Ws2tcpip.h>
+#include <io.h>
+#else
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #define IPIFY_HOST    "api.ipify.org"
 #define AGENT_NAME    PACKAGE_NAME "/" PACKAGE_VERSION
@@ -45,17 +52,23 @@ int ipify_connect(void)
 	hints.ai_socktype = SOCK_STREAM;
 
 	rc = getaddrinfo(IPIFY_HOST, "http", &hints, &result);
-	if (rc || !result)
+	if (rc || !result) {
 		return -1;
+    }
 
 	for (rp = result; rp; rp = rp->ai_next) {
 		sd = socket(rp->ai_family, rp->ai_socktype, 0);
-		if (sd < 0)
+		if (sd < 0) {
 			continue;
+        }
 
 		rc = connect(sd, result->ai_addr, result->ai_addrlen);
 		if (rc) {
+#ifdef _WIN32
+            closesocket(sd);
+#else
 			close(sd);
+#endif
 			sd = -1;
 			continue;
 		}
@@ -77,40 +90,51 @@ int ipify_query(int sd, char *addr, size_t len)
 	int domain;
 
 	rc = send(sd, req, strlen(req), 0);
-	if (rc < 0)
+	if (rc < 0) {
 		return -1;
+	}
 
 	rc = recv(sd, buf, sizeof(buf), 0);
-	if (rc < 0)
+	if (rc < 0) {
 		return -1;
+	}
 	buf[rc] = 0;
 
 	ptr = strstr(buf, "200 OK");
-	if (!ptr)
+	if (!ptr) {
 		return 1;
+	}
 
 	ptr = strstr(ptr, "\r\n\r\n");
-	if (!ptr)
+	if (!ptr) {
 		return 1;
+	}
 	ptr += 4;
 
 	domain = AF_INET;
 	if (!inet_pton(domain, ptr, tmp)) {
 		domain = AF_INET6;
-		if (!inet_pton(domain, ptr, tmp))
+		if (!inet_pton(domain, ptr, tmp)) {
 			return 1;
+		}
 	}
 
-	if (!inet_ntop(domain, tmp, addr, len))
+	if (!inet_ntop(domain, tmp, addr, len)) {
 		return 1;
+	}
 
 	return 0;
 }
 
 int ipify_disconnect(int sd)
 {
+#ifdef _WIN32
+    shutdown(sd, SD_BOTH);
+    return closesocket(sd);
+#else
 	shutdown(sd, SHUT_RDWR);
 	return close(sd);
+#endif
 }
 
 int ipify(char *addr, size_t len)
@@ -118,8 +142,9 @@ int ipify(char *addr, size_t len)
 	int sd, ret;
 
 	sd = ipify_connect();
-	if (sd < 0)
+	if (sd < 0) {
 		return 1;
+	}
 
 	ret  = ipify_query(sd, addr, len);
 	ret |= ipify_disconnect(sd);

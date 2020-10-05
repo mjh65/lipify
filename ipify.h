@@ -18,12 +18,20 @@
 #ifndef IPIFY_H_
 #define IPIFY_H_
 
-#include <stdio.h>
+#include <stddef.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 int ipify_connect    (void);
 int ipify_query      (int sd, char *addr, size_t len);
 int ipify_disconnect (int sd);
 
 int ipify            (char *addr, size_t len);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* IPIFY_H_ */
